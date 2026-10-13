@@ -1,0 +1,446 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum EnglishLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum ExperienceLevel {
+  FRESHER
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+}
+
+enum AiProvider {
+  GEMINI
+  OPENAI
+  OLLAMA
+}
+
+enum VoicePreference {
+  MALE
+  FEMALE
+  NEUTRAL
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  MEDIUM
+  ADVANCED
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ABANDONED
+}
+
+enum LearningModeType {
+  PRACTICE
+  ENGLISH
+  INTERVIEW
+  VOCABULARY
+  GRAMMAR
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(USER)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  profile       UserProfile?
+  settings      UserSettings?
+  refreshTokens RefreshToken[]
+  notifications Notification[]
+  questionBanks QuestionBank[]
+  practiceSessions PracticeSession[]
+  interviewSessions InterviewSession[]
+  topicProgress UserTopicProgress[]
+  weakAreas     WeakArea[]
+  achievements  UserAchievement[]
+  aiUsage       AIUsage[]
+  fileUploads   FileUpload[]
+  bookmarks     BookmarkedQuestion[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id                  String          @id @default(uuid())
+  userId              String          @unique @map("user_id")
+  name                String
+  profilePhoto        String?         @map("profile_photo")
+  preferredLanguage   String          @default("en") @map("preferred_language")
+  englishLevel        EnglishLevel    @default(A2) @map("english_level")
+  learningGoal        String?         @map("learning_goal")
+  experienceLevel     ExperienceLevel @default(FRESHER) @map("experience_level")
+  targetRole          String?         @map("target_role")
+  preferredAiProvider AiProvider      @default(GEMINI) @map("preferred_ai_provider")
+  voicePreference     VoicePreference @default(FEMALE) @map("voice_preference")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model UserSettings {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("user_id")
+  theme         Json     @default("{\"mode\":\"system\",\"accentColor\":\"blue\"}")
+  notifications Json     @default("{\"email\":true,\"practiceReminders\":true,\"weeklyReport\":true}")
+  practice      Json     @default("{\"defaultDifficulty\":\"MEDIUM\",\"questionsPerSession\":20,\"showHints\":true,\"autoAdvance\":false}")
+  ai            Json     @default("{\"provider\":\"gemini\",\"maxTokens\":1024,\"temperature\":0.7}")
+  voice         Json     @default("{\"enabled\":true,\"speed\":1.0,\"autoPlayQuestions\":false}")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  message   String   @db.Text
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+model QuestionBank {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?  @db.Text
+  topic       String?
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions Question[]
+  sessions  PracticeSession[]
+
+  @@index([userId])
+  @@map("question_banks")
+}
+
+model Question {
+  id              String   @id @default(uuid())
+  bankId          String   @map("bank_id")
+  text            String   @db.Text
+  topic           String?
+  difficulty      DifficultyLevel @default(MEDIUM)
+  hasExpectedAnswer Boolean @default(false) @map("has_expected_answer")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  bank              QuestionBank       @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  answer            QuestionAnswer?
+  practiceQuestions PracticeQuestion[]
+  bookmarks         BookmarkedQuestion[]
+
+  @@index([bankId])
+  @@map("questions")
+}
+
+model QuestionAnswer {
+  id         String @id @default(uuid())
+  questionId String @unique @map("question_id")
+  text       String @db.Text
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_answers")
+}
+
+model PracticeSession {
+  id             String           @id @default(uuid())
+  userId         String           @map("user_id")
+  bankId         String?          @map("bank_id")
+  mode           LearningModeType @default(PRACTICE)
+  difficulty     DifficultyLevel  @default(MEDIUM)
+  status         SessionStatus    @default(ACTIVE)
+  totalQuestions Int              @default(0) @map("total_questions")
+  currentIndex   Int              @default(0) @map("current_index")
+  averageScore   Float?           @map("average_score")
+  topic          String?
+  startedAt      DateTime         @default(now()) @map("started_at")
+  completedAt    DateTime?        @map("completed_at")
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bank      QuestionBank?      @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  questions PracticeQuestion[]
+
+  @@index([userId, status])
+  @@map("practice_sessions")
+}
+
+model PracticeQuestion {
+  id             String          @id @default(uuid())
+  sessionId      String          @map("session_id")
+  questionId     String?         @map("question_id")
+  orderIndex     Int             @map("order_index")
+  questionText   String          @map("question_text") @db.Text
+  expectedAnswer String?         @map("expected_answer") @db.Text
+  topic          String?
+  difficulty     DifficultyLevel @default(MEDIUM)
+  hintUsed       Boolean         @default(false) @map("hint_used")
+
+  session  PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question?       @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  answer   UserAnswer?
+
+  @@index([sessionId])
+  @@map("practice_questions")
+}
+
+enum AnswerType {
+  WRITTEN
+  VOICE
+}
+
+model UserAnswer {
+  id                 String     @id @default(uuid())
+  practiceQuestionId String     @unique @map("practice_question_id")
+  answerText         String     @map("answer_text") @db.Text
+  answerType         AnswerType @default(WRITTEN) @map("answer_type")
+  submittedAt        DateTime   @default(now()) @map("submitted_at")
+
+  practiceQuestion PracticeQuestion @relation(fields: [practiceQuestionId], references: [id], onDelete: Cascade)
+  evaluation       AnswerEvaluation?
+
+  @@map("user_answers")
+}
+
+model AnswerEvaluation {
+  id                String   @id @default(uuid())
+  userAnswerId      String   @unique @map("user_answer_id")
+  score             Float
+  correctness       Float
+  relevance         Float
+  clarity           Float
+  grammar           Float?
+  technicalAccuracy Float?   @map("technical_accuracy")
+  communication     Float?
+  strengths         Json
+  improvements      Json
+  correctAnswer     String   @map("correct_answer") @db.Text
+  explanation       String   @db.Text
+  shortModelAnswer  String   @map("short_model_answer") @db.Text
+  confidence        Float    @default(0.8)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  userAnswer UserAnswer @relation(fields: [userAnswerId], references: [id], onDelete: Cascade)
+
+  @@map("answer_evaluations")
+}
+
+model BookmarkedQuestion {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  questionId String   @map("question_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@map("bookmarked_questions")
+}
+
+model InterviewSession {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  interviewType String        @map("interview_type")
+  targetJob     String?       @map("target_job")
+  difficulty    DifficultyLevel @default(MEDIUM)
+  status        SessionStatus @default(ACTIVE)
+  overallScore  Float?        @map("overall_score")
+  startedAt     DateTime      @default(now()) @map("started_at")
+  completedAt   DateTime?     @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("interview_sessions")
+}
+
+model UserTopicProgress {
+  id           String @id @default(uuid())
+  userId       String @map("user_id")
+  topic        String
+  totalAttempts Int   @default(0) @map("total_attempts")
+  averageScore Float @default(0) @map("average_score")
+  lastPracticed DateTime? @map("last_practiced")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topic])
+  @@map("user_topic_progress")
+}
+
+model WeakArea {
+  id        String @id @default(uuid())
+  userId    String @map("user_id")
+  category  String
+  topic     String
+  severity  Float  @default(0.5)
+  count     Int    @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("weak_areas")
+}
+
+model Achievement {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  description String @db.Text
+  icon        String?
+  xpReward    Int    @default(0) @map("xp_reward")
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  earnedAt      DateTime @default(now()) @map("earned_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model AIUsage {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  provider     String
+  model        String
+  requestType  String   @map("request_type")
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  totalTokens  Int      @default(0) @map("total_tokens")
+  estimatedCost Float   @default(0) @map("estimated_cost")
+  responseTimeMs Int    @default(0) @map("response_time_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_usage")
+}
+
+model FileUpload {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  originalName String   @map("original_name")
+  storedName   String   @map("stored_name")
+  mimeType     String   @map("mime_type")
+  size         Int
+  path         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("file_uploads")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("password_reset_tokens")
+}
+
+/** Shared cache of AI/curated Q&A — reused to save tokens on generate + evaluate */
+model AiKnowledgeItem {
+  id             String          @id @default(uuid())
+  contentHash    String          @unique @map("content_hash")
+  questionText   String          @map("question_text") @db.Text
+  expectedAnswer String          @map("expected_answer") @db.Text
+  topic          String?
+  mode           String?
+  difficulty     DifficultyLevel @default(MEDIUM)
+  source         String          @default("ai")
+  useCount       Int             @default(0) @map("use_count")
+  createdById    String?         @map("created_by_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@index([topic, mode, difficulty])
+  @@index([mode, difficulty])
+  @@map("ai_knowledge_items")
+}
